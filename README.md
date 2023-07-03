@@ -36,7 +36,7 @@ log10 of the reciprocal of the transmittance value). The water region has been r
 - Rennet coagulation time, k20, a30, a60
 - Curd firming time
 - Curd firmness after 30 & 60 minutes
-- 
+  
 » Casein micelle size
 
 ## Acknowledgement:

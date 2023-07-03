@@ -39,6 +39,13 @@ log10 of the reciprocal of the transmittance value). The water region has been r
   
 » Casein micelle size
 
+![image](https://github.com/divyaaxd/Milk-MIR-Traits/assets/109436293/0a2d316d-b8ab-4651-9cb1-c79c7a7cef39)
+![image](https://github.com/divyaaxd/Milk-MIR-Traits/assets/109436293/481b5b80-e76c-4e7d-b9ed-26929d3a2926)
+![image](https://github.com/divyaaxd/Milk-MIR-Traits/assets/109436293/0d437384-6241-4cd4-81c4-d6edada20093)
+
+
+
+
 ## Acknowledgement:
 Teagasc: Agriculture and Food Development Authority is the national body providing integrated research, advisory and training 
 services to the agriculture and food industry and rural communities.

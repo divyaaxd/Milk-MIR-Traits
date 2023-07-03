@@ -1,0 +1,609 @@
+---
+title: "Multivariate Analysis "
+author: 'Divya Dwivedi'
+date: "2023-03-05"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+**1. Load the data set into R. Use the set.seed function in R to set the seed to your student number. Randomly generate a number between 1 and n (where n is the number of rows in the dataset), and delete that observation/row from the dataset. Ensure that you include the code used in this step in the R code you submit with your assignment so that your work can be reproduced. **
+
+## Loading packages
+```{r Packages, message=FALSE, warning=FALSE}
+
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(ggcorrplot)
+library(GGally)
+library(egg)
+library(class) # for knn()
+library(MASS) # for lda() and qda()
+library(sparcl) # for ColorDendrogram() for coluring dendogram dendogram
+library(cluster) # for silhouette()
+library(e1071) # for ClassAgreement
+library(mclust)
+library(pls)
+library(caret)
+options(warn = -1) # to ignore the warnings generated during pairs plot using ggplot
+```
+
+## Loading the DataSet
+```{r Dataset}
+
+# Load the dataset
+df <- read.csv("Milk_MIR_Traits_data_2023.csv")
+dim(df)
+
+# Set the seed to your student number
+set.seed(22200315) # replace 1234 with your student number
+
+# Generate a random number between 1 and n and delete the corresponding observation/row
+n <- nrow(df)
+random_row <- sample(n, 1)
+df <- df[-random_row, ]
+```
+
++ The MIR data contains 431 recorded observations of various traits of milk samples with a total of 582 columns.
++ The initial 51 columns consist information about the breed, date of sampling, protein and technological traits.
++ The last 531 columns of this data contains the MIR Spectra readings on 531 unique wave-lengths.  
+
+**2.The milk protein beta Lactoglobulin B is used in the production of protein drinks. Remove from the dataset any record/observation which has a missing/NA value for Beta Lactoglobulin B. Then, visualise the spectra and the protein trait beta Lactoglobulin B using (separate) suitable plots. Comment on the plots. Remove any observations with beta Lactoglobulin B outside of 3 standard deviations from the mean of the trait.**
+
+
+```{r Missing Values}
+#Remove rows with any missing value or Beta Lactoglobulin B 
+df <- df %>% drop_na(beta_lactoglobulin_b)
+```
+
+## Analysing the protein and Beta Lactoglobulin B trait of the data set
+
+```{r Analyze}
+sum(is.na(df$beta_lactoglobulin_b))
+
+#Removing any missing values for Beta Lactoglobulin B from the dataset
+
+df1 <- df %>% drop_na(c("beta_lactoglobulin_b"))
+dim(df1)
+```
+There were 124 missing values for Beta Lactoglobulin B in the data set. 
+Removing the missing values to get a dataset of dimension 306 x 582.
+
+```{r Visualization 1, warning=FALSE}
+
+proteins = data.frame(df[, 6:13])
+str(proteins)
+ggpairs(df[, colnames(proteins)], progress = FALSE)
+summary(proteins)
+
+#Creating a data frame with beta lactoglobulin_b values
+beta_lb <- data.frame(df[,13])
+```
+From the correlation plot we can see that most data is skewed. 
++ alpha s1 casein seems to have a strong positive correlation with beta casein.(0.878)
++ There is a negative weak correlation observed between Beta Lactoglobulin a and b.(-0.3)
+
+```{r Visualization 2}
+
+#Visualization of the milk protein Beta Lactoglobulin B using a Box Plot
+
+par(mfrow = c(1,3))
+boxplot(beta_lb, df1['Breed'], main = 'β Lactoglobulin B vs Breed')
+boxplot(beta_lb, df1['Date_of_sampling'], main = 'β Lactoglobulin B vs Date')
+boxplot(beta_lb, df1['Milking_Time'], main = 'β Lactoglobulin B vs MilkingTime')
+```
+
+```{r}
+# Selecting Data pertaining to the Spectra
+Spectra_Data <- df[,(ncol(df)-530):ncol(df)]
+milk_spectra <- df1[,-c(1:51)]
+
+# Checking for Missing values
+paste("Number of Missing values:",sum(is.na(milk_spectra)))
+```
+
+## Visualizing the Spectra
+
+```{r Visualization, message=FALSE, warning=FALSE}
+
+# Randomly Choosing an observation 
+random_observation <- sample(c(1:nrow(milk_spectra)),1)
+
+# Obtaining column names
+col_names <- colnames(milk_spectra)
+
+# Changing column names into list of corresponding wavelengths
+col_names <- as.numeric(gsub("X","",col_names))
+p1<-ggplot()+geom_point(aes(x = col_names,y = unlist(milk_spectra[random_observation,])))+xlab("Wavelength  cm−1")+ylab("Absorbance Values")+ggtitle(paste("MIR_Spectra of obervation no:",random_observation))
+
+# Generating more tick for a more accurate plot
+p1 + scale_x_continuous(n.breaks = 20) +scale_y_continuous(n.breaks = 20)
+```
++ This graph represents the MIR_spectra for the `r random_observation` observation in our data set. The graph plots the absorbance values of this sample at each of the 531 recorded wavelengths.  
+
++ Each wavelength has the potential to correspond to the different traits of the sample such as the Heat stability,milk fat content, protein content ,processability etc, the absorbance values at these wavelengths indicate the strength of these traits.  
+
+```{r warning=FALSE}
+
+matplot(t(milk_spectra),xlab = "Wavelength Index",ylab = "Absorbance",
+        main="Trend of Spectra", xlim= c(0,500), ylim = c(0,1))
+```
+*From the plot obtained above:*
++ We can see that the wavelengths are overlapping to a great extent, this indicates that there is high correlation among those wave-lengths.  
++ We can also see that the maximum absorbance in the spectra is around 0.64 and the minimum absorbance is approximately -0.1
+
+```{r}
+# Remove observations with Beta Lactoglobulin B outside of 3 standard deviations from the mean of the trait
+
+mean_beta <- mean(df1$beta_lactoglobulin_b)
+sd_beta <- sd(df1$beta_lactoglobulin_b)
+df1 <- df1 %>% filter(beta_lactoglobulin_b >= (mean_beta - 3*sd_beta) & beta_lactoglobulin_b <= (mean_beta + 3*sd_beta))
+```
+
+
+```{r message=FALSE, warning=FALSE}
+
+summary(df1$beta_lactoglobulin_b)
+
+ggplot()+geom_histogram(aes(x=df1$beta_lactoglobulin_b),color="#69b3a7",
+                        fill="#69b3a2",alpha=0.6)+
+xlab(" beta_lactoglobulin_b values")+      ggtitle("beta_lactoglobulin_b")+scale_x_continuous(n.breaks = 10) +
+scale_y_continuous(n.breaks = 10)+stat_bin(bins = 30)+
+geom_density()+
+  geom_vline(aes(xintercept=mean(df1$beta_lactoglobulin_b)),
+            color="#69b3f9", linetype="dashed", size=1) #mean line
+
+```
+*From the plot and summary statistics of data:*
+
++ Data is slightly right skewed.
++ Average  Beta_Lactoglobulin_B found in milk samples was around 2.397.
++ The mean and median for this data are close with slight deviation.
++ 2 unusual values (outliers) were recorded for this variable.
++ The values range from 0 to 7.23.
+
+*3. Use hierarchical clustering and k-means clustering to determine if there are clusters of similar MIR spectra in the data. Motivate any decisions you make. Compare the hierarchical clustering and k-means clustering solutions. Comment on/explore any clustering structure you uncover, considering the data generating context.*
+
+## Hierarchical Clustering
+
+Scaled data to bring the variables the values of variables under the same range.
+
+```{r}
+milk_spectra <- scale(milk_spectra)
+dim(milk_spectra)
+```
+
+### Visualizing clustering structures through hierarchical clustering technique
+
+
+```{r hierarchical}
+# creating dissimilarity matrix
+dis_euc <- dist(milk_spectra, method = 'euclidean')
+
+# clustering the milk spectra data using the complete linkage method
+cl_comp <- hclust(dis_euc, method = 'complete')
+plot(cl_comp)
+
+# Cutting dendogram to create groups 
+hcl = cutree(cl_comp, k = 3)
+table(hcl)
+
+#Plotting dendogram
+ColorDendrogram(cl_comp, hcl, main = "MIR data groups",  branchlength = 60)+
+  abline(h=80, col='red', lt=2) 
+#colouring different groups in dendogram
+
+```
+### Analysis of Hierarchical Clustering
+
++To gain insight into the groups present in a data set of milk spectra, I employed hierarchical clustering using the euclidean distance measure to determine the dissimilarity between two data points and complete linkage to measure the dissimilarity between joined clusters. The results showed that there are two main groups within the milk samples for MIR spectra data, and further subgroups can be observed within these two groups, potentially relating to the different breeds of cows in the samples. 
+
++Specifically, the first group has two subgroups, while the second group has five subgroups. To investigate these subgroups, I performed clustering on the original data without removing unusual observations obtained earlier in the protein and technological traits. Although this produced a 7 cluster solution, the agreement between the clustering solution obtained and the original labels related to each observation from the breed column of the data was not significant enough.
+
++From these findings, I concluded that there are three major groups in the data, but there are subgroups among them that may be related to breeds. I avoided using single linkage because it can lead to chaining problems, and both average and complete linkage produced similar results for the data.
+
+Checking this further through kmeans clustering algorithm:
+ 
+## Kmeans clustering
+
+Now that I have a basic understanding of how the milk spectrum data is grouped, I can use the kmeans algorithm to investigate how tightly the clusters are formed within the dataset. To do this, I will run the k-means clustering algorithm using various values of k and record the within-cluster sum of squares for each value of k between 1 and 10. This will help me determine the optimal clustering solution for the dataset.
+
+### Visualizing clustering structures through K-means clustering technique
+
+```{r message=FALSE}
+# Function to fit kmeans clustering model and computing within sum of squares for different values of K for optimal solution.
+
+set.seed(22200315)
+WGSS = rep(0,10)
+n = nrow(milk_spectra)
+WGSS[1] = (n-1) * sum(apply(milk_spectra, 2, var))
+for(k in 2:10)
+{
+WGSS[k] = sum(kmeans(milk_spectra, centers = k,nstart = 50)$withinss)
+}
+plot(1:10, WGSS, type="b", xlab="K values", 
+     ylab="Within group sum of squares",
+     main = "WSS Elbow plot")
+
+```
+From the table obtained above for K means clustering, we have divided the MIR Spectra in the data in three clusters using WGSS elbow method.
+
+```{r k-means cluster}
+
+#The k versus WGSS plot suggests k = 3 is a good clustering solution. 
+#Hence:
+
+k=3
+set.seed(22200315)
+# using nstart = 50 to avoid local optimum 
+Spectra_k = kmeans(milk_spectra, center=k, nstart = 50)
+table(Spectra_k$cluster)
+```
+### Analysis of K means Clustering
+Our k-means clustering suggests that our data is divided into 3 clusters:
+
+Cluster 1 : 8 observations  
+Cluster 2 : 128 observations  
+Cluster 3 : 167 observations  
+
+**4. Apply principal components analysis to the spectral data, motivating any decisions you make in the process. Plot the cumulative proportion of the variance explained by the first 10 principal components. How many principal components do you think are required to represent the spectral data? Explain your answer.**
+  
+## PCA
+
+First we must make the decision of whether we need to standardize the data or not.  
+If the variance related to the variables are different then we shall standardize the data. Variables with larger variances will end up having more effect on the PCA.  
+
+Upon finding the variance we see there is a difference in the variance of the variables  
+
+```{r}
+sample(apply(Spectra_Data,2,var),10)
+```
+Although the variation values are extremely small in all variables, it is to be noted that there is a difference of 10 to 100 times. I consider this sufficient to standardize the data.  
+
+```{r Standardizing data}
+
+# using the scale() function to scale our data
+Spectra_Data_std <- scale(Spectra_Data,center = T,scale = T)
+```
+
+```{r PCA}
+Spectra_PCA <- prcomp(Spectra_Data_std,scale. = T,center = T)
+PCA_sum <- summary(Spectra_PCA)
+
+# Displaying the first 10 Principle components
+PCA_10 <-as.data.frame(t(PCA_sum$importance[,1:10]))
+PCA_10
+```
+### Visualizing Cumulative Proportion plot
+```{r Cumulative Proportion Plot}
+ggplot(data = PCA_10,aes(x=1:10,y= `Cumulative Proportion`,label = round(`Cumulative Proportion`,3)))+
+  geom_point()+
+  geom_line()+
+  geom_text(hjust =0.5,vjust=1.4,size=3)+
+  scale_x_continuous(n.breaks =10)+
+  xlab("Principal Component")+
+  ylab("Cumilative Variance Proportion")+
+  ggtitle("Cumulative proportion of Variance explained by the first 10 Principal Components")+
+  geom_vline(xintercept = 3,linetype="dotted", col='red')
+```
+
+I use the following method to choose the number of Principal Components required to represent the data:  
+
+#### Scree Plot
+
+A scree plot is a graphical representation of how much variance is accounted for by each principal component. We use this plot to identify the point at which subsequent components explain very little or practically none of the variance. Since principal components are arranged in order of increasing variance explained, we only plot the first 10 components. By the 10th principal component, the amount of variance explained is less than 0.006% of the total variance in the data. Therefore, exploring additional components is not worth the computational resources.
+  
+```{r Scree Plot}
+ggplot(data = PCA_10,aes(x=1:10,y= `Proportion of Variance`,label = `Proportion of Variance`))+
+  geom_point()+
+  geom_line()+
+  geom_text(hjust =0.5,vjust=1.4,size=3)+
+  scale_x_continuous(n.breaks =10)+
+  xlab("Principal Component")+
+  ylab("Cumilative Variance Proportion")+
+  ggtitle("Scree Plot of the first 10 Principal Components")+
+  geom_vline(xintercept = 3,linetype="dotted", col="red")
+```
+
+After analyzing the data, we notice a drop odd in value at the third component, indicating that we should select the first three components. When conducting principal component analysis, we observe that by using the first four principal components, we can preserve 94.85% of the information or variation that exists in the data. Therefore, we will use the first three principal components to represent the data.
+
+
+**5. Derive the principal component scores for the milk samples from first principles (i.e., you should not use an inbuilt function such as predict(. . . )). Plot the principal component scores for the milk samples.Comment on any structure you observe.**
+
+
+```{r Scores First Principles}
+S =cov(scale(Spectra_Data))
+eig = eigen(S)
+e_vec = eig$vectors
+scores <- as.matrix(scale(Spectra_Data,center=T))%*%e_vec
+scores[1:6,1:3]
+```
+Looking at the principal component scores for the milk sample provided above, we can observe that there are certain patterns or structures present in the data.
+
+PC1 appears to have negative values for all the samples, with the first sample having the most negative value. This suggests that PC1 is capturing some common factor that is present in all the samples, but is particularly strong in the first sample.
+
+PC2, on the other hand, has a wide range of values, both positive and negative, with the fifth sample having the highest positive value. This suggests that PC2 is capturing some factor that is present in some samples, but not others.
+
+PC3 has a smaller range of values compared to PC2, and also have both positive and negative values. This suggests that these principal components are capturing more subtle patterns or structures in the data, which are present in some samples, but not others.
+
+Overall, the patterns or structures present in the principal component scores indicate that there are underlying factors or variables that are affecting the composition of the milk samples in different ways, and that these factors can be captured and analyzed using principal component analysis.
+
+```{r}
+ggplot(data = data.frame(scores),aes(x=X1,y=X2))+geom_point()+
+  ggtitle("PC1 vs PC2")+
+  geom_vline(xintercept = -37.5,linetype="dotted",col="blue",lwd=1)+
+  geom_hline(yintercept = -25,linetype="dotted",col="red",lwd=1)
+```
+  
+By plotting PC1 vs PC2 scores we can see a structure emerging.
+It seems as though the data gets divides into 2 clusters:  
+Cluster 1 with a PC1 score >=-37.5 and PC2 score >=-25  in the first quadrant.
+Cluster 2 with a PC1 score <=-37.5 and PC2 score <=-25  in the third quadrant.
+
+
+**6. Interest lies in predicting the \β Lactoglobulin B trait based on the MIR spectra. Principal components regression (PCR) is one approach to doing so for such n < p data. Research the principal components regression method and how it works e.g., see An Introduction to Statistical Learning with Applications in R by James et al. (2021), The Elements of Statistical Learning by Hastie et al. (2017), and/or the peer-reviewed journal article The pls Package: Principal Component and Partial Least Squares Regression in R by Mevik and Wehrens (2007). In your own words, write a maximum 1 page synopsis of the PCR method. Your synopsis should (i) explain the method’s purpose, (ii) provide a general description of how the method works, (iii) detail any choices that need to be made when using the method and (iv) outline the advantages and disadvantages of the method**
+
+
+The Principal Component Regression (PCR) is a widely used statistical method that first applies Principal Component Analysis on the data set to summarize the original predictor variables into few new variables also known as principal components (PCs), which are a linear combination of the original data to build the linear regression model. With high-dimensional data, where the number of predictor variables (p) is significantly greater than the number of samples, the primary goal of PCR is to address the problem of overfitting. (n).
+
+There are several steps involved in the general procedure for performing PCR.Once the n principal components are obtained, a linear regression model is fitted using these components as predictors. The regression coefficients are estimated using ordinary least squares (OLS) or partial least squares (PLS) regression, depending on the choice of the algorithm. The resulting model can then be used to predict the outcome variable for new samples.
+
+As a result of the growth in very large datasets in areas such as image analysis or Web data analysis, significant methodological advances in data analysis, which frequently have their origins in PCA, have been made. One of the key advantages of PCR is its ability to handle high-dimensional data with relatively few samples, which is commonly encountered in a variety of scientific domains such as biology, chemistry, and finance. Furthermore, PCR can aid in the discovery of significant predictor variables and shed light on the underlying structure of the data.
+ 
+However, there are a few PCR limitations that should be taken into account while deploying the technique. Firstly, identifying the right amount of principal components is essential and might ask for some knowledge or trial and error. Second, PCR relies on the unavoidable assumption that the relationship between the predictor factors and the result variable is linear. Third, there is a risk that PCR will exhibit multicollinearity, which can result in estimations of the regression coefficients that are unstable. Additionally, PCR is suitable when the data set contains highly correlated predictors. 
+
+In conclusion, PCR is an effective technique for deciphering high-dimensional data and making predictions based on a more condensed collection of major components. To assure the validity of the results, it is vital to carefully analyze the method's constraints and underlying presumptions.
+
+
+**7. Use the function pcr in the pls R package to use PCR to predict the β Lactoglobulin B levels from the spectra for a test set, where the test set is one third of the data. Motivate any decisions you make.**
+
+## PCR to predict β Lactoglobulin B levels
+
+```{r}
+set.seed(22200315) # for reproducibility
+# Manipulating data to get beta Lacto globulin B and Spectra Data in the same data frame
+Data_pcr <- df1[,c(13,52:582)]
+
+#Splitting data into test and train
+test_index <- createDataPartition(Data_pcr$beta_lactoglobulin_b,
+                                  times = 1, p=0.33, list = F)
+
+train_data <- Data_pcr[-test_index,]
+test_data  <- Data_pcr[test_index,]
+```
+
+Setting scale=TRUE has the effect of standardizing each predictor, prior to generating the principal components, so that the scale on which each variable is measured will not have an effect. Setting validation="CV" causes pcr() to compute the ten-fold cross-validation error for each possible value of the number of principal components used. The resulting fit can be examined using summary().
+
+### Fitting the model 
+
+```{r}
+#Fitting the model
+pls_fit <- pcr(beta_lactoglobulin_b~.,data=train_data,scale=TRUE,
+                validation = "CV")
+
+#Plot model RMSE vs different values of components
+plot(pls_fit)
+```
+The CV score is provided for each possible number of components, ranging from 0 onwards. Note that pcr() reports the root mean squared error; in order to obtain the usual MSE, we must square this quantity.
+
+### Cumulative variation
+
+The optimum number of clusters for this model is 4 as that is when the lowest cross validation error occurs.
+We can confirm this decision by cumulative variation captured by the first 10 components. We can see that the value is stable after Comp 4 making ncomp=4 the ideal number of components for our model.
+
+```{r}
+cumsum(explvar(pls_fit)[1:10])
+```
+
+We can also plot the cross-validation scores using the validationplot() function. 
+Using val.type="MSEP" will cause the cross-validation MSE to be plotted.
+
+### Validation Plot
+
+```{r warning=FALSE}
+
+#Validation Plot
+validationplot(pls_fit, val.type = "RMSEP",legendpos="topleft",
+                main="RMSEP Plot for Beta Lactoglobulin b",
+                ylim = c(1.50,1.95),xlim=c(0,110))
+```
+The validation results here are root mean squared error of prediction (RMSEP). There are two cross-validation estimates: CV is the ordinary CV estimate, and adjCV is a bias-corrected CV estimate.
+
+### Analysis of the PCR model
+
++ We see that the smallest cross-validation error occurs when M = 4 components are used.From the plot we also see that the cross-validation error is roughly the same when only one component is included in the model. This suggests that a model that uses just a small number of components might suffice.
+
++ The summary() function also provides the percentage of variance explained in the predictors and in the response using different numbers of components For instance, setting M = 1 only captures 50.34% of all the variance, or information, in the predictors. In contrast, using M = 4 increases the value to 97.32%. If we were to use all M = p = 179 components, this would increase to 100%.
+
+### Evaluating performance using RMSEP of the model
+
+```{r}
+RMSEP_comparison<-data.frame(x1<-(RMSEP(pls_fit)$val)[seq(2,20,2)],x2<-(RMSEP(pls_fit,newdata = test_data)$val)[seq(2,20,2)])
+
+names(RMSEP_comparison)<-c("Cross validated estimate","Test RMSEP")
+
+RMSEP_comparison[4,]
+```
+Since the test value is close to the estimated value indicating that our prediction is good. We also observe that the RMSEP value is close to the adj CV value of ncomp=4 for the pls model.
+
+```{r}
+plot(pls_fit, plottype = "coef", ncomp=1:4, legendpos = "topright",
+     xlab = "no of components")
+```
+The graoh above visualizes the regression coefficients. This allows simultaneous plotting of the regression
+vectors for several different numbers of components at once.
+```{r}
+#Prediction values
+test_pred <- predict(pls_fit, newdata = test_data) #to generate prediction values
+head(test_pred[1:5])
+```
+
+### Prediction 
+```{r}
+plot(pls_fit, ncomp = 4, asp = 1, line = TRUE,main="Cross validated predictions for Spectra Data")
+```
+  
+From the plot above we can see that the predicted values does not accurately follow the observed data points.
+Alternatively, we can use MSE to assess the model performance.
+
+**8. Seven milk proteins, one of which is β Lactoglobulin B, are important for the production of cheese and whey (see invited lecture slides). Here, for some records/observations the β Lactoglobulin B values are exactly 0, while there are non-zero values for the other milk proteins for the same records. Often records with such strange measurements are deleted, arguably losing information. Here, rather than delete these observations, the β Lactoglobulin B values of 0 could be treated as ‘missing at random’. Often such missing values are imputed using e.g., the mean of the observed β Lactoglobulin B values. In the multivariate setting, matrix completion methods can be used to impute such missing at random values. (Note that matrix completion approaches are often used to power recommender systems such as Netflix.) One matrix completion method uses principal components analysis as detailed in section 12.3 in An Introduction to Statistical Learning with Applications in R by James et al. (2021). Read this section to understand how the method works. Write your own code to impute the β Lactoglobulin B values that are 0 using principal components analysis on the seven milk proteins data. You must use the function prcomp or eigen in your solution. Comment on the results you obtain.**
+
+
+```{r}
+protein <- df1[c(7:13)]
+colSums(protein==0)
+pca<-prcomp (protein,scale=TRUE)
+```
+Using Statistical Learning method, we use the prcomp function to extract the principal components of the complete data, and then use these components to predict the missing values using linear regression.
+```{r}
+#Extracting principal components
+pcom<-pca$x
+#Extracting loadings
+loadings<- pca$rotation
+
+# split data into complete and incomplete subsets
+complete_rows <- which(rowSums((protein!=0))==7)
+incomplete_rows <- which(rowSums((protein!=0))<7)
+complete_data <- protein[complete_rows, ]
+incomplete_data <- protein[incomplete_rows, ]
+# predict missing values using linear regression on principal components
+predicted_data <- incomplete_data
+
+for (i in 1:ncol(incomplete_data)) 
+{
+ y <- complete_data[, i]
+ x <- pcom[complete_rows, ]
+ x_pred <- pcom[incomplete_rows, ]
+ loadings_i <- loadings[, i]
+ model <- lm(y ~ x %*% loadings_i)
+ predicted_data[, i] <- predict(model, newdata = list(x = x_pred)) 
+}
+
+# combine predicted and observed data to form completed matrix
+completed_data <- protein
+completed_data[incomplete_rows, ] <- predicted_data
+colSums(completed_data==0)
+```
+
+```{r}
+ggpairs(completed_data[, colnames(completed_data)], progress = FALSE)
+```
+**9. Using PCR, predict the β Lactoglobulin B values from the MIR spectra for a test set where the training set contains:**
+
+Using the same Spectra Dataset from Q7, I shall solve the questions below:
+
+**(a) all records with an observed, non-zero value of β Lactoglobulin B.**
+
+```{r}
+set.seed(22200315)
+data_nonzero<- Data_pcr[Data_pcr$beta_lactoglobulin_b!=0,]
+test_index1 <- createDataPartition(data_nonzero$beta_lactoglobulin_b,
+                                  times = 1, p=0.33, list = F)
+train1 <- data_nonzero[-test_index1,]
+test1  <- data_nonzero[test_index1,]
+
+#Fitting the model
+fit1 <- pcr(beta_lactoglobulin_b~., data= train1, scale= TRUE, validation = "CV")
+x_test1 <- test1[,-1]
+y_test1<- test1[,1]
+
+pred1 <- predict(fit1, x_test1, ncomp=60)
+mse1=mean((pred1-y_test1)^2)
+rmse1=sqrt(mse1)
+```
+
+The model's performance is evaluated using two metrics - MSE and RMSE, which are 2.076 and 1.4408 respectively. However, the model is not considered highly accurate because a significant amount of data (32 rows) is excluded due to the filtering of the dataset where the beta lactoglobulin B values are zero, resulting in a loss of valuable information.
+
+**(b) all records but where 0 values of β Lactoglobulin B are imputed using the observed mean.**
+
+```{r}
+set.seed(22200315)
+Data_mean<-Data_pcr
+Data_mean$beta_lactoglobulin_b[(Data_mean$beta_lactoglobulin_b)==0]<-
+mean(Data_pcr$beta_lactoglobulin_b,na.rm=TRUE)
+
+test_index2 <- createDataPartition(Data_mean$beta_lactoglobulin_b,
+                                  times = 1, p=0.33, list = F)
+train2 <- Data_mean[-test_index2,]
+test2 <- Data_mean[test_index2,]
+
+#Fitting the model
+fit2 <- pcr(beta_lactoglobulin_b~., data= train2, scale= TRUE, validation = "CV")
+x_test2 <- test2[,-1]
+y_test2<- test2[,1]
+
+pred2 <- predict(fit2, x_test2, ncomp=60)
+mse2=mean((pred2-y_test2)^2)
+rmse2=sqrt(mse2)
+mse2
+rmse2
+```
+The model's performance metrics MSE and RMSE are 1.798 and 1.341 respectively. The MSE value is comparatively lower which signifies that this model is more accurate than the first one and the predicted values are much closer to the observed values.
+
+**(c) all records but where 0 values of β Lactoglobulin B values are imputed using principal components analysis**
+
+```{r}
+set.seed(22200315)
+pca2<- prcomp(Data_pcr[,'beta_lactoglobulin_b'],scale=TRUE)
+
+complete_rows <- which(rowSums((Data_pcr!=0))==532)
+incomplete_rows <- which(rowSums((Data_pcr!=0))<532)
+complete_data <- Data_pcr[complete_rows, ]
+incomplete_data <- Data_pcr[incomplete_rows, ]
+
+# predict missing values using linear regression on principal components
+
+predicted_data <- incomplete_data
+for (i in 1:ncol(incomplete_data)) {
+   y <- complete_data[, i]
+   x <- pcom[complete_rows, ]
+   x_pred <- pcom[incomplete_rows, ]
+   loadings_i <- loadings
+   model <- lm(y ~ x %*% loadings_i)
+   predicted_data[, i] <- predict(model, newdata = list(x = x_pred)) 
+}
+
+# combine predicted and observed data to form completed matrix
+df_pca <- Data_pcr
+df_pca[incomplete_rows, ] <- predicted_data
+
+test_index3 <- createDataPartition(df_pca$beta_lactoglobulin_b,
+                                  times = 1, p=0.33, list = F)
+train3 <- df_pca[-test_index3,]
+test3 <- df_pca[test_index3,]
+
+#Fitting the model
+fit3 <- pcr(beta_lactoglobulin_b~., data= train3, scale= TRUE, validation = "CV")
+x_test3 <- test3[,-1]
+y_test3<- test3[,1]
+
+pred3 <- predict(fit3, x_test3, ncomp=60)
+mse3=mean((pred3-y_test3)^2)
+rmse3=sqrt(mse3)
+mse3
+rmse3
+```
+The model's performance metrics MSE and RMSE are 2.267 and 1.505 respectively.The model is not extremely accurate.
+
+```{r}
+
+mse_1=((pred1-y_test1)^2)
+mse_2=((pred2-y_test2)^2)
+mse_3=((pred3-y_test3)^2)
+
+#Plotting and comparing MSE of above three models
+plot(mse_1, type="o", col="darkblue", pch=".", xlab="Number of components",
+     ylab="MSE", lty=1, 
+     main='Comparing Model Accuracy using MSE')
+points(mse_2, col="red", pch=".") #Adding MSE2 to same plot
+lines(mse_2, col="red",lty=1)
+points(mse_3, col="green",pch=".") #Adding MSE3 to the same plot
+lines(mse_3, col="green", lty=1)
+
+#add a legend in top left corner of chart at (x, y) coordinates = (1, 19)
+legend(70,22,legend=c("MSE 1","MSE 2","MSE 3"), col=c("darkblue","red","green"),
+lty=c(1,1,1), ncol=1)
+```
+
